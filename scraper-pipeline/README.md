@@ -1,3 +1,5 @@
+HELLO THERE!
+
 # Quote Scraper API
 
 A FastAPI service that scrapes quotes with Playwright and stores them in PostgreSQL.

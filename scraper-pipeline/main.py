@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import asyncio
 import hmac
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query
@@ -11,6 +12,7 @@ from database import (
     database_is_ready,
     fetch_quotes,
     fetch_scrape_job,
+    recover_incomplete_scrape_job,
 )
 from models import ScrapeRequest
 from scraper import run_scraper_task
@@ -18,7 +20,19 @@ from scraper import run_scraper_task
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.db_pool = await create_db_pool(DATABASE_URL)
+    recovered_job = await recover_incomplete_scrape_job(app.state.db_pool)
+    app.state.resume_task = None
+    if recovered_job is not None:
+        app.state.resume_task = asyncio.create_task(
+            run_scraper_task(app.state.db_pool, recovered_job["id"])
+        )
     yield
+    if app.state.resume_task is not None:
+        app.state.resume_task.cancel()
+        try:
+            await app.state.resume_task
+        except asyncio.CancelledError:
+            pass
     await app.state.db_pool.close()
 
 app = FastAPI(lifespan=lifespan)
@@ -80,6 +94,10 @@ async def trigger_scrape(
         app.state.db_pool,
         str(request.target_url),
         pages,
+        request.card_selector,
+        request.quote_selector,
+        request.author_selector,
+        request.tags_selector,
     )
     if active_job_id is not None:
         raise HTTPException(
@@ -93,12 +111,6 @@ async def trigger_scrape(
         run_scraper_task,
         app.state.db_pool,
         job_id,
-        str(request.target_url),
-        pages,
-        request.card_selector,
-        request.quote_selector,
-        request.author_selector,
-        request.tags_selector,
     )
 
     return {

@@ -48,6 +48,12 @@ curl http://127.0.0.1:8000/api/scrape/jobs/1
 Jobs move through `pending`, `running`, `completed`, or `failed`. A completed
 job reports `pages_completed` and `items_inserted`.
 
+Jobs are resumable. The API stores the requested URL, selectors, and progress
+in PostgreSQL. If the service restarts while a job is running, startup finds
+that unfinished job and continues at the next page. A page may be visited
+again if the process stopped just before its progress was saved, but the
+unique quote constraint and `ON CONFLICT DO NOTHING` prevent duplicate rows.
+
 The request can override the demo target and selectors:
 
 ```json
@@ -89,6 +95,9 @@ Build and run the image with a local `.env` file:
 docker build -t quote-scraper .
 docker run --env-file .env -p 8000:8000 quote-scraper
 ```
+
+Run those commands from the `scraper-pipeline` directory. Render should use
+that directory as the Docker build root, with `Dockerfile` as its Dockerfile.
 
 ## Render
 

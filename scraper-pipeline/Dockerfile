@@ -8,18 +8,16 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy requirements relative to the root build context we set in Step 1
-COPY scraper-pipeline/requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install Chromium and its OS-level dependencies
 RUN playwright install --with-deps chromium
 
-# Copy the rest of the subfolder files into the container
-COPY scraper-pipeline/ .
+COPY . .
 
 # Ensure Python reads standard output instantly in logs
 ENV PYTHONUNBUFFERED=1
 
 # Tell Uvicorn to listen to the dynamic port Render provides
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]

@@ -3,32 +3,37 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
 from pydantic import ValidationError
 
-from database import update_scrape_job
+from database import claim_scrape_job, update_scrape_job
 from models import QuoteItem
 
 
 async def run_scraper_task(
     db_pool: asyncpg.Pool,
     job_id: int,
-    target_url: str,
-    page_limit: int,
-    card_selector: str,
-    quote_selector: str,
-    author_selector: str,
-    tags_selector: str,
 ) -> None:
     browser = None
     pages_completed = 0
     items_inserted = 0
 
     try:
-        await update_scrape_job(db_pool, job_id, "running")
+        job = await claim_scrape_job(db_pool, job_id)
+        if job is None:
+            return
+
+        target_url = job["target_url"]
+        page_limit = job["pages_requested"]
+        card_selector = job["card_selector"]
+        quote_selector = job["quote_selector"]
+        author_selector = job["author_selector"]
+        tags_selector = job["tags_selector"]
+        pages_completed = job["pages_completed"]
+        items_inserted = job["items_inserted"]
 
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(headless=True)
             page = await browser.new_page()
 
-            for page_number in range(1, page_limit + 1):
+            for page_number in range(pages_completed + 1, page_limit + 1):
                 page_url = f"{target_url.rstrip('/')}/page/{page_number}"
                 await page.goto(page_url, wait_until="domcontentloaded")
 

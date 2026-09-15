@@ -23,6 +23,19 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+@app.get("/")
+async def root():
+    return {
+        "message": "Welcome to the Quote Scraper API",
+        "status": "active",
+        "documentation": "/docs",
+        "endpoints": {
+            "health_check": "/health",
+            "fetch_quotes": "/api/quotes"
+        }
+    }
+
+
 
 @app.get("/health")
 async def health_check():

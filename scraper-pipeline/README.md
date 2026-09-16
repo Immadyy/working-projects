@@ -46,7 +46,12 @@ curl http://127.0.0.1:8000/api/scrape/jobs/1
 ```
 
 Jobs move through `pending`, `running`, `completed`, or `failed`. A completed
-job reports `pages_completed` and `items_inserted`.
+job reports `pages_completed`, `items_inserted`, and `stopped_reason`.
+`stopped_reason` is `requested_page_limit` when all requested pages were
+processed, `empty_page` when pagination reached a page with no matching cards,
+or `page_not_found` when a later page returned HTTP 404. These are normal
+partial-completion outcomes, not errors. A missing first page or another HTTP
+error marks the job as `failed` with an actionable `error_message`.
 
 Jobs are resumable. The API stores the requested URL, selectors, and progress
 in PostgreSQL. If the service restarts while a job is running, startup finds

@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS scrape_jobs (
     author_selector TEXT NOT NULL DEFAULT '.author',
     tags_selector TEXT NOT NULL DEFAULT '.tag',
     error_message TEXT,
+    stopped_reason TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     started_at TIMESTAMPTZ,
     finished_at TIMESTAMPTZ
@@ -47,6 +48,9 @@ async def create_db_pool(database_url: str) -> asyncpg.Pool:
         )
         await connection.execute(
             "ALTER TABLE scrape_jobs ADD COLUMN IF NOT EXISTS tags_selector TEXT NOT NULL DEFAULT '.tag'"
+        )
+        await connection.execute(
+            "ALTER TABLE scrape_jobs ADD COLUMN IF NOT EXISTS stopped_reason TEXT"
         )
 
     return pool
@@ -104,6 +108,7 @@ async def update_scrape_job(
     pages_completed: int | None = None,
     items_inserted: int | None = None,
     error_message: str | None = None,
+    stopped_reason: str | None = None,
 ) -> None:
     async with pool.acquire() as connection:
         await connection.execute(
@@ -113,6 +118,7 @@ async def update_scrape_job(
                 pages_completed = COALESCE($3, pages_completed),
                 items_inserted = COALESCE($4, items_inserted),
                 error_message = $5,
+                stopped_reason = $6,
                 started_at = CASE
                     WHEN $2 = 'running' AND started_at IS NULL THEN NOW()
                     ELSE started_at
@@ -128,6 +134,7 @@ async def update_scrape_job(
             pages_completed,
             items_inserted,
             error_message,
+            stopped_reason,
         )
 
 
@@ -135,9 +142,10 @@ async def fetch_scrape_job(pool: asyncpg.Pool, job_id: int) -> dict | None:
     async with pool.acquire() as connection:
         row = await connection.fetchrow(
             """
-                 SELECT id, status, target_url, pages_requested, pages_completed,
+            SELECT id, status, target_url, pages_requested, pages_completed,
                      items_inserted, card_selector, quote_selector, author_selector,
-                     tags_selector, error_message, created_at, started_at, finished_at
+                     tags_selector, error_message, stopped_reason,
+                     created_at, started_at, finished_at
             FROM scrape_jobs
             WHERE id = $1
             """,

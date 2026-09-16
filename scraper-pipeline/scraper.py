@@ -14,6 +14,7 @@ async def run_scraper_task(
     browser = None
     pages_completed = 0
     items_inserted = 0
+    stopped_reason = "requested_page_limit"
 
     try:
         job = await claim_scrape_job(db_pool, job_id)
@@ -35,11 +36,32 @@ async def run_scraper_task(
 
             for page_number in range(pages_completed + 1, page_limit + 1):
                 page_url = f"{target_url.rstrip('/')}/page/{page_number}"
-                await page.goto(page_url, wait_until="domcontentloaded")
+                response = await page.goto(page_url, wait_until="domcontentloaded")
+
+                if response is not None and response.status == 404:
+                    if pages_completed == 0:
+                        raise RuntimeError(
+                            "Target returned HTTP 404 on the first page. "
+                            "Check target_url and pagination format."
+                        )
+                    stopped_reason = "page_not_found"
+                    print(f"Page {page_number} was not found; stopping pagination.")
+                    break
+
+                if response is not None and response.status >= 400:
+                    raise RuntimeError(
+                        f"Target returned HTTP {response.status} on page {page_number}."
+                    )
 
                 try:
                     await page.wait_for_selector(card_selector, timeout=5000)
                 except PlaywrightTimeoutError:
+                    if pages_completed == 0:
+                        raise RuntimeError(
+                            "No cards found on the first page. "
+                            "Check target_url and selectors."
+                        )
+                    stopped_reason = "empty_page"
                     print(f"No cards found on page {page_number}; stopping pagination.")
                     break
 
@@ -90,6 +112,7 @@ async def run_scraper_task(
             "completed",
             pages_completed,
             items_inserted,
+            stopped_reason=stopped_reason,
         )
         print(f"Scraping completed: {pages_completed} pages")
 
@@ -102,6 +125,7 @@ async def run_scraper_task(
             pages_completed,
             items_inserted,
             error_message,
+            stopped_reason="error",
         )
         print(f"Scraping failed: {error_message}")
     finally:
